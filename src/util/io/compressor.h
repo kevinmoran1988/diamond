@@ -18,6 +18,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include <memory>
+#include <vector>
 #include "decompressor.h"
 
 struct Compressor {
@@ -69,6 +71,30 @@ private:
 	static const size_t chunk_size = 1llu << 20;
 	ZSTD_CStream* strm_ = nullptr;
 	std::vector<unsigned char> out_;
+	FILE* stream_ = nullptr;
+	bool closed_ = false;
+};
+#endif
+
+#ifdef WITH_ISAL
+struct isal_zstream;
+
+/* Standard gzip output through Intel ISA-L (see isal_bridge.cpp). */
+struct IsalCompressor : Compressor {
+	/* ISA-L's highest compression level. */
+	static constexpr int MAX_LEVEL = 3;
+	explicit IsalCompressor(int level = MAX_LEVEL);
+	size_t fwrite(const void* buffer, size_t size, size_t count, FILE* stream) override;
+	void close(FILE* stream) override;
+	virtual CompressionLib lib() const override {
+		return CompressionLib::ISAL;
+	}
+	virtual ~IsalCompressor();
+private:
+	void deflate_loop(FILE* stream, bool finish);
+	static const size_t chunk_size = 1llu << 20;
+	std::unique_ptr<isal_zstream> strm_;
+	std::vector<uint8_t> level_buf_, out_;
 	FILE* stream_ = nullptr;
 	bool closed_ = false;
 };

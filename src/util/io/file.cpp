@@ -192,6 +192,13 @@ File::File(const string& name, const char* mode, Flags flags, CompressionLib com
 			compressor_.reset(new ZstdCompressor);
 #endif
 			break;
+		case CompressionLib::ISAL:
+#ifdef WITH_ISAL
+			compressor_.reset(new IsalCompressor);
+#else
+			throw runtime_error("This build of DIAMOND does not support ISA-L compression.");
+#endif
+			break;
 		default:
 			;
 		}

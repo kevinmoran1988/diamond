@@ -33,7 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 using ssize_t = int64_t;
 #endif
 
-enum class CompressionLib { NONE, ZLIB, ZSTD };
+enum class CompressionLib { NONE, ZLIB, ZSTD, ISAL };
 
 struct Decompressor {
 	virtual size_t fread(void* buffer, size_t size, size_t count, FILE* stream) = 0;

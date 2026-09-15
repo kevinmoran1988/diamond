@@ -154,6 +154,14 @@ string Config::single_query_file() const {
 	return query_file.empty() ? string() : query_file.front();
 }
 
+/* The help text only offers isal when this build can honour it, so callers can detect support
+   from the option listing of a command. */
+#ifdef WITH_ISAL
+static const char* const COMPRESS_HELP = "compression for output files (0=none, 1=gzip, isal=gzip via ISA-L, zstd)";
+#else
+static const char* const COMPRESS_HELP = "compression for output files (0=none, 1=gzip, zstd)";
+#endif
+
 CompressionLib Config::compressor() const
 {
 	if (compression.empty() || compression == "0")
@@ -162,6 +170,12 @@ CompressionLib Config::compressor() const
 		return CompressionLib::ZLIB;
 	else if (compression == "zstd")
 		return CompressionLib::ZSTD;
+	else if (compression == "isal")
+#ifdef WITH_ISAL
+		return CompressionLib::ISAL;
+#else
+		throw runtime_error("--compress isal requires DIAMOND to be built with ISA-L (install libisal-dev and rebuild with -DWITH_ISAL=ON).");
+#endif
 	else
 		throw runtime_error("Invalid compression algorithm: " + compression);
 }
@@ -306,7 +320,7 @@ Config::Config(int argc, const char **argv, bool check_io, CommandLineParser& pa
 		("unal", 0, "report unaligned queries (0=no, 1=yes)", report_unaligned, -1)
 		("max-hsps", 0, "maximum number of HSPs per target sequence to report for each query (default=1)", max_hsps, 1u)
 		("range-culling", 0, "restrict hit culling to overlapping query ranges", query_range_culling)
-		("compress", 0, "compression for output files (0=none, 1=gzip, zstd)", compression)
+		("compress", 0, COMPRESS_HELP, compression)
 		("min-score", 0, "minimum bit score to report alignments (overrides e-value setting)", min_bit_score)
 		("query-cover", 0, "minimum query cover% to report an alignment", query_cover)
 		("subject-cover", 0, "minimum subject cover% to report an alignment", subject_cover)
@@ -803,7 +817,7 @@ Config::Config(int argc, const char **argv, bool check_io, CommandLineParser& pa
 			auto_append_extension(database, ".dmnd");
 		if (command == Config::view)
 			auto_append_extension(daa_file, ".daa");
-		if (compression == "1")
+		if (compression == "1" || compression == "isal")
 			auto_append_extension(output_file, ".gz");
 		if (compression == "zstd")
 			auto_append_extension(output_file, ".zst");
