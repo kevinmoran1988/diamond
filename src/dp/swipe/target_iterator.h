@@ -203,6 +203,12 @@ struct AsyncTargetBuffer
 				target_seqs[i].assign(t.seq.data(), t.seq.end());
 			++i;
 		}
+		// The letters of the current column and the composition bias mask only change when a
+		// lane takes a new target, so they are kept here instead of rebuilt for every column.
+		std::fill(letter, letter + LANES, (Score)SUPER_HARD_MASK);
+		for (int j = 0; j < i; ++j)
+			letter[j] = (Score)target_seqs[j][0];
+		update_cbs_mask();
 	}
 
 	int max_len() const {
@@ -223,13 +229,7 @@ struct AsyncTargetBuffer
 
 	Sv seq_vector() const
 	{
-		alignas(32) Score s[LANES];
-		std::fill(s, s + LANES, (Score)SUPER_HARD_MASK);
-		for (int i = 0; i < active.size(); ++i) {
-			const int channel = active[i];
-			s[channel] = (Score)(*this)[channel];
-		}
-		return load_sv<Sv>(s);
+		return load_sv<Sv>(letter);
 	}
 
 	const int8_t** get(const int8_t** target_scores) const {
@@ -265,6 +265,8 @@ struct AsyncTargetBuffer
 		const BlockId n = (*next)++;
 		if (n >= target_count) {
 			active.erase(i);
+			letter[channel] = (Score)SUPER_HARD_MASK;
+			update_cbs_mask();
 			return false;
 		}
 		DpTarget t = begin[n];
@@ -276,29 +278,37 @@ struct AsyncTargetBuffer
 			target_seqs[channel].assign_reversed(t.seq.data(), t.seq.end());
 		else
 			target_seqs[channel].assign(t.seq.data(), t.seq.end());
+		letter[channel] = (Score)target_seqs[channel][0];
+		update_cbs_mask();
 		return true;
 	}
 
 	bool inc(int channel)
 	{
 		++pos[channel];
-		if (pos[channel] >= (int)dp_targets[channel].seq.length())
+		if (pos[channel] >= (int)dp_targets[channel].seq.length()) {
+			letter[channel] = (Score)SUPER_HARD_MASK;
 			return false;
+		}
+		letter[channel] = (Score)target_seqs[channel][pos[channel]];
 		return true;
 	}
 
-	uint32_t cbs_mask() {
-		uint32_t r = 0;
+	uint32_t cbs_mask() const {
+		return cbs_mask_;
+	}
+
+	void update_cbs_mask() {
+		cbs_mask_ = 0;
 		custom_matrix_16bit = false;
 		for (int i = 0; i < active.size(); ++i) {
 			const int channel = active[i];
 			if (dp_targets[channel].adjusted_matrix()) {
-				r |= 1 << channel;
+				cbs_mask_ |= 1 << channel;
 				if (dp_targets[channel].matrix->score_max > SCHAR_MAX || dp_targets[channel].matrix->score_min < SCHAR_MIN)
 					custom_matrix_16bit = true;
 			}
 		}
-		return r;
 	}
 
 	const bool reverse_targets;
@@ -309,6 +319,8 @@ struct AsyncTargetBuffer
 	std::atomic<BlockId>* const next;
 	DpTarget dp_targets[LANES];
 	bool custom_matrix_16bit;
+	uint32_t cbs_mask_;
+	alignas(32) Score letter[LANES];
 	std::array<Array<Letter>, LANES> target_seqs;
 
 };
