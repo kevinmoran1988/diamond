@@ -126,6 +126,66 @@ static inline unsigned match_block_reduced(const Letter *x, const Letter *y)
 #endif
 }
 
+// All hits of one query seed position share the query window, so it is reduced once and the
+// subject is compared against the reduced copy. reduce_query writes in 16-letter blocks.
+static inline void reduce_query(const Letter* q, int len, int8_t* out)
+{
+#if defined(__SSE2__)
+	for (int i = 0; i < len; i += 16)
+		_mm_storeu_si128((__m128i*)(out + i), reduce_seq(q + i, Reduction::get_reduction().map8()));
+#elif defined(__ARM_NEON)
+	for (int i = 0; i < len; i += 16)
+		vst1q_s8(out + i, reduce_seq(q + i, Reduction::get_reduction().map8()));
+#else
+	for (int i = 0; i < len; ++i)
+		out[i] = (int8_t)Reduction::get_reduction().map8()[(long)letter_mask(q[i])];
+#endif
+}
+
+static inline unsigned match_block_reduced_q(const int8_t* x, const Letter* y)
+{
+#if defined(__SSE2__)
+	const __m128i r1 = _mm_loadu_si128((const __m128i*)x);
+	const __m128i r2 = reduce_seq(y, Reduction::get_reduction().map8b());
+	return _mm_movemask_epi8(_mm_cmpeq_epi8(r1, r2));
+#elif defined(__ARM_NEON)
+	const int8x16_t r1 = vld1q_s8(x);
+	const int8x16_t r2 = reduce_seq(y, Reduction::get_reduction().map8b());
+	return vmaskq_s8(vreinterpretq_s8_u8(vceqq_s8(r1, r2)));
+#else
+	unsigned r = 0;
+	for (int i = 15; i >= 0; --i) {
+		r <<= 1;
+		const Letter ly = letter_mask(y[i]);
+		if (!is_amino_acid(ly))
+			continue;
+		if ((Letter)x[i] == Reduction::get_reduction().map8b()[(long)ly])
+			r |= 1;
+	}
+	return r;
+#endif
+}
+
+static inline uint64_t reduced_match_q(const int8_t* q, const Letter* s, int len) {
+	assert(len <= 64);
+	if (len < 64) {
+		const uint64_t mask = (1llu << len) - 1;
+		uint64_t m = match_block_reduced_q(q, s);
+		if (len <= 16)
+			return m & mask;
+		m |= (uint64_t)match_block_reduced_q(q + 16, s + 16) << 16;
+		if (len <= 32)
+			return m & mask;
+		m |= (uint64_t)match_block_reduced_q(q + 32, s + 32) << 32;
+		if (len <= 48)
+			return m & mask;
+		m |= (uint64_t)match_block_reduced_q(q + 48, s + 48) << 48;
+		return m & mask;
+	}
+	else
+		return (uint64_t)match_block_reduced_q(q, s) | ((uint64_t)match_block_reduced_q(q + 16, s + 16) << 16) | ((uint64_t)match_block_reduced_q(q + 32, s + 32) << 32) | ((uint64_t)match_block_reduced_q(q + 48, s + 48) << 48);
+}
+
 static inline uint64_t reduced_match32(const Letter* q, const Letter* s, unsigned len)
 {
 	uint64_t x = match_block_reduced(q + 16, s + 16) << 16 | match_block_reduced(q, s);

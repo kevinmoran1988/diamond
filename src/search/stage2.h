@@ -107,6 +107,11 @@ static void search_query_offset(const SeedLoc& q,
 
 	const int interval_mod = config.left_most_interval > 0 ? seed_offset % config.left_most_interval : window_left, interval_overhang = std::max(window_left - interval_mod, 0);
 
+	alignas(16) int8_t query_reduced[((WINDOW_LEFT + 1 + WINDOW_RIGHT + 15) / 16) * 16];
+	QueryWindow qw{ nullptr, 0 };
+	if (!skip_left_most)
+		qw = query_window(query_clipped + interval_overhang, window_left - interval_overhang, query_reduced);
+
 	for (vector<uint_fast32_t>::const_iterator i = hits; i < hits_end; i += n) {
 
 		n = std::min(N, int(hits_end - i));
@@ -136,7 +141,7 @@ static void search_query_offset(const SeedLoc& q,
 #endif
 				work_set.stats.inc(Statistics::TENTATIVE_MATCHES2);
 				if (skip_left_most
-					|| left_most_filter(query_clipped + interval_overhang, subjects[j] + interval_overhang, window_left - interval_overhang, shapes[sid].length_, work_set.context, sid == 0, sid, score_cutoff, chunked, hamming_filter_id)) {
+					|| left_most_filter(query_clipped + interval_overhang, subjects[j] + interval_overhang, window_left - interval_overhang, shapes[sid].length_, work_set.context, sid == 0, sid, score_cutoff, chunked, hamming_filter_id, qw)) {
 					work_set.stats.inc(Statistics::TENTATIVE_MATCHES3);
 					if (work_set.cfg.target_seed_hits)
 						work_set.cfg.target_seed_hits->operator[](sid).atomic_set((uint64_t)s[*(i + j)]);

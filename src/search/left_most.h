@@ -59,6 +59,22 @@ static inline bool verify_hits(uint32_t mask, const Letter* q, const Letter* s, 
 	return false;
 }
 
+constexpr int WINDOW_LEFT = 16, WINDOW_RIGHT = 32;
+// Reduced query window shared by all hits of one query seed position.
+struct QueryWindow {
+	const int8_t* reduced;
+	uint64_t seed_mask;
+};
+
+// buf must hold WINDOW_LEFT + 1 + WINDOW_RIGHT letters rounded up to a 16-letter block.
+static inline QueryWindow query_window(const Sequence& query, const int seed_offset, int8_t* buf)
+{
+	const Loc d = std::max(seed_offset - WINDOW_LEFT, 0), window_left = std::min(WINDOW_LEFT, seed_offset);
+	const Loc window = std::min(Loc(query.length()) - d, window_left + 1 + WINDOW_RIGHT);
+	reduce_query(query.data() + d, window, buf);
+	return { buf, seed_mask(query.data() + d, window) };
+}
+
 static inline bool left_most_filter(const Sequence &query,
 	const Letter* subject,
 	const int seed_offset,
@@ -68,10 +84,9 @@ static inline bool left_most_filter(const Sequence &query,
 	const int shape_id,
 	int score_cutoff,
 	bool chunked,
-	unsigned hamming_filter_id)
+	unsigned hamming_filter_id,
+	const QueryWindow& qw)
 {
-	constexpr int WINDOW_LEFT = 16, WINDOW_RIGHT = 32;
-
 	Loc d = std::max(seed_offset - WINDOW_LEFT, 0), window_left = std::min(WINDOW_LEFT, seed_offset);
 	const Letter *q = query.data() + d, *s = subject + d;
 	Loc window = query.length() - d;
@@ -86,8 +101,8 @@ static inline bool left_most_filter(const Sequence &query,
 	window_left -= d;
 	window -= d;
 
-	const uint64_t match_mask = reduced_match(q, s, window),
-		query_seed_mask = ~seed_mask(q, window);
+	const uint64_t match_mask = reduced_match_q(qw.reduced + d, s, window),
+		query_seed_mask = ~((qw.seed_mask >> d) & (window >= 64 ? ~0llu : (1llu << window) - 1));
 
 	const uint32_t len_left = window_left + seed_len - 1,
 		match_mask_left = ((1llu << len_left) - 1) & match_mask,
