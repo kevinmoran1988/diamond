@@ -46,7 +46,8 @@ Hsp traceback(Cbs bias_correction, const Matrix<Cell>& dp, const DpTarget& targe
 	out.score = ScoreTraits<Sv>::int_score(max_score) * config.cbs_matrix_scale;
 	out.evalue = evalue;
 	out.bit_score = score_matrix.bitscore(out.score);
-	out.corrected_bit_score = score_matrix.bitscore_corrected(out.score, p.query.length(), target.true_target_len);
+	if (config.corrected_bitscore)
+		out.corrected_bit_score = score_matrix.bitscore_corrected(out.score, p.query.length(), target.true_target_len);
 	out.frame = p.frame.index();
 	if (target.carry_over.i1 == 0) {
 		out.query_range.end_ = max_i + 1;
@@ -88,7 +89,8 @@ Hsp traceback(Cbs bias_correction, const TracebackVectorMatrix<Sv> &dp, const Dp
 	out.score = ScoreTraits<Sv>::int_score(max_score);
 	out.evalue = evalue;
 	out.bit_score = score_matrix.bitscore(out.score);
-	out.corrected_bit_score = score_matrix.bitscore_corrected(out.score, p.query.length(), target.true_target_len);
+	if (config.corrected_bitscore)
+		out.corrected_bit_score = score_matrix.bitscore_corrected(out.score, p.query.length(), target.true_target_len);
 	out.transcript.reserve(size_t(out.score * config.transcript_len_estimate));
 
 	out.frame = p.frame.index();

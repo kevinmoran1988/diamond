@@ -251,6 +251,7 @@ struct Config
 	bool output_fp;
 	int family_cap;
 	int cbs_matrix_scale;
+	bool corrected_bitscore;  // set from the output format: does any field need it (see init_output)
 	size_t query_count;
 	double cbs_err_tolerance;
 	int cbs_it_limit;

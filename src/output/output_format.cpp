@@ -221,6 +221,11 @@ OutputFormat* get_output_format()
 OutputFormat* init_output(int64_t& max_target_seqs)
 {
 	OutputFormat* output_format = get_output_format();
+	// The corrected bit score costs an ALP call per HSP, so the DP kernels only compute it when an
+	// output field reads it.
+	const TabularFormat* tab = dynamic_cast<const TabularFormat*>(output_format);
+	config.corrected_bitscore = output_format->code == OutputFormat::EDGE
+		|| (tab != nullptr && std::find(tab->fields.begin(), tab->fields.end(), FieldId::CorrectedBitScore) != tab->fields.end());
 	if (config.extension_mode == "none" && config.frame_shift != 0)
 		throw std::runtime_error("Frameshift alignment does not support --ext none.");
 	if (config.extension_mode == "none" && *output_format == OutputFormat::daa)
