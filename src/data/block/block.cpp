@@ -68,6 +68,15 @@ bool Block::long_offsets() const {
 	return seqs_.raw_len() > (int64_t)std::numeric_limits<uint32_t>::max();
 }
 
+static uint64_t hash_frame(const std::vector<Letter>& frame) {
+	uint64_t h = 1469598103934665603ull;
+	for (const Letter l : frame) {
+		h ^= (unsigned char)l;
+		h *= 1099511628211ull;
+	}
+	return h | 1;
+}
+
 int64_t Block::push_back(const Sequence& seq, const char* id, const std::vector<char>* quals, const OId oid, const SequenceType seq_type, const int frame_mask, const bool dna_translation) {
 	static const char* const OVERFLOW_ERR = "Sequences in block exceed supported maximum.";
 	if (block2oid_.size() == numeric_limits<BlockId>::max())
@@ -91,11 +100,14 @@ int64_t Block::push_back(const Sequence& seq, const char* id, const std::vector<
 	int64_t letters = 0;
 	for (int j = 0; j < 6; ++j) {
 		if (frame_mask & (1 << j)) {
+			frame_hash_.push_back(hash_frame(t[j]));
 			letters += Util::Seq::find_orfs(t[j], min_len);
 			seqs_.push_back(t[j].cbegin(), t[j].cend());
 		}
-		else
+		else {
+			frame_hash_.push_back(0);
 			seqs_.fill(t[j].size(), MASK_LETTER);
+		}
 	}
 	return letters;
 }
@@ -104,6 +116,7 @@ void Block::append(const Block& b, bool remove_padding, bool append_seqs, bool a
 	if (append_seqs) {
 		seqs_.append(b.seqs_, remove_padding);
 		source_seqs_.append(b.source_seqs_, remove_padding);
+		frame_hash_.insert(frame_hash_.end(), b.frame_hash_.begin(), b.frame_hash_.end());
 	}
 	if (append_ids) {
 		ids_.append(b.ids_, remove_padding);

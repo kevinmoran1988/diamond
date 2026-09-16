@@ -59,6 +59,11 @@ struct Block {
 	SequenceSet& source_seqs() {
 		return source_seqs_;
 	}
+	// Hash of each translated frame taken before --min-orf masking, one per block sequence; 0 marks
+	// a frame that is not searched. Empty for protein input.
+	const std::vector<uint64_t>& frame_hash() const {
+		return frame_hash_;
+	}
 	SequenceSet& unmasked_seqs() {
 		return unmasked_seqs_;
 	}
@@ -121,6 +126,7 @@ private:
 	StringSet qual_;
 	SeedHistogram hst_;
 	std::vector<OId> block2oid_;
+	std::vector<uint64_t> frame_hash_;
 	std::vector<bool> masked_;
 	std::vector<double> self_aln_score_;
 	std::mutex mask_lock_;
