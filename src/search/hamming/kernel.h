@@ -87,7 +87,9 @@ static void FLATTEN stage1(const SeedLoc* __restrict q, uint_fast32_t nq, const 
 		for (uint_fast32_t j = 0; j < ss; j += tile_size) {
 			const uint_fast32_t tq = std::min(tile_size, qs - i);
 			const uint_fast32_t ts = std::min(tile_size, ss - j);
-			work_set.hits.init(tq, ts);
+			// all_vs_all below stores every used word of every row, so the tile needs no clearing.
+			// A kernel that sets bits one pair at a time must use hits.init instead.
+			work_set.hits.init_overwritten(tq, ts);
 			all_vs_all(vq.data() + i, tq, vs.data() + j, ts, work_set.hits, work_set.cfg.hamming_filter_id);
 			search_tile(work_set.hits, i, j, q, s, 0, work_set);
 		}

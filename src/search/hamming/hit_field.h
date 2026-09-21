@@ -32,12 +32,19 @@ using std::vector;
 struct HitField {
     
     void init(size_t query_count, size_t max_target) {
-        // Targets are 0..max_target-1, so max_target-1 is the largest index a row has to hold.
-        shift_ = std::max(max_target > 1 ? bit_length(max_target - 1) : 0, 8);
-        word_shift_ = shift_ - 6;
-        words_per_query_ = size_t(1) << word_shift_;
-        words_used_ = (max_target + 63) >> 6;
+        layout(query_count, max_target);
         data_.assign(query_count * words_per_query_, 0ULL);
+    }
+
+    /* For a kernel that writes every used word of every row: size the buffer and leave the
+       old contents in place. Clearing them is dead work, since nothing reads a word before
+       the kernel stores it, and only the first words_used() words are read at all. The
+       buffer only grows, so query_count_ rather than data_.size() gives the row count. */
+    void init_overwritten(size_t query_count, size_t max_target) {
+        layout(query_count, max_target);
+        const size_t n = query_count * words_per_query_;
+        if (data_.size() < n)
+            data_.resize(n);
     }
 
     /* The words of one query row, bit t of word t/64 standing for target t. A kernel
@@ -78,10 +85,19 @@ struct HitField {
     }
 
     size_t query_count() const noexcept {
-        return data_.size() >> word_shift_;
+        return query_count_;
     }
 
 private:
+
+    void layout(size_t query_count, size_t max_target) noexcept {
+        // Targets are 0..max_target-1, so max_target-1 is the largest index a row has to hold.
+        shift_ = std::max(max_target > 1 ? bit_length(max_target - 1) : 0, 8);
+        word_shift_ = shift_ - 6;
+        words_per_query_ = size_t(1) << word_shift_;
+        words_used_ = (max_target + 63) >> 6;
+        query_count_ = query_count;
+    }
 
     static unsigned ctz64(uint64_t x) noexcept {
 #if defined(_MSC_VER) && defined(_M_X64)
@@ -99,6 +115,7 @@ private:
     int word_shift_ = 0;
     size_t words_per_query_ = 0;
     size_t words_used_ = 0;
+    size_t query_count_ = 0;
     vector<uint64_t> data_;
     vector<uint_fast32_t> hits_;
 
