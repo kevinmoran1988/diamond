@@ -53,9 +53,10 @@ static inline bool skip_seed_position(const EnumCfg& cfg, int shape, const uint6
 	return SkipSeedPositionImpl<SKIP_SEED_POSITIONS>::apply(cfg, shape, pos);
 }
 
-template<typename F, typename Filter, bool SKIP_SEED_POSITIONS>
-//Search::SeedStats FLATTEN enum_seeds(SequenceSet* seqs, F* f, unsigned begin, unsigned end, const Filter* filter, const EnumCfg& cfg)
-Search::SeedStats enum_seeds(SequenceSet* seqs, F* f, unsigned begin, unsigned end, const Filter* filter, const EnumCfg& cfg)
+/* W is the shape weight, 0 when the caller could not pin it down. enum_seeds dispatches on it
+   once per call so that the seed encoding is instantiated for a constant weight. */
+template<int W, typename F, typename Filter, bool SKIP_SEED_POSITIONS>
+Search::SeedStats enum_seeds_weight(SequenceSet* seqs, F* f, unsigned begin, unsigned end, const Filter* filter, const EnumCfg& cfg)
 {
 	uint64_t key;
 	Search::SeedStats stats;
@@ -77,7 +78,7 @@ Search::SeedStats enum_seeds(SequenceSet* seqs, F* f, unsigned begin, unsigned e
 			Letter* ptr = seqs->ptr(i);
 			Loc j = 0;
 			while (it.good()) {
-				if (it.get(key, sh)) {
+				if (W == 0 ? it.get(key, sh) : it.template get<W == 0 ? 2 : W>(key, sh)) {
 					const uint64_t pos = seqs->position(i, j);
 					if (!skip_seed_position<SKIP_SEED_POSITIONS>(cfg, shape_id, pos) && filter->contains(key, shape_id))
 						(*f)(key, pos, i, shape_id);
@@ -88,6 +89,23 @@ Search::SeedStats enum_seeds(SequenceSet* seqs, F* f, unsigned begin, unsigned e
 	}
 	f->finish();
 	return stats;
+}
+
+template<typename F, typename Filter, bool SKIP_SEED_POSITIONS>
+Search::SeedStats enum_seeds(SequenceSet* seqs, F* f, unsigned begin, unsigned end, const Filter* filter, const EnumCfg& cfg)
+{
+	// Every shape of a sensitivity setting shares a weight; anything else falls back to W = 0.
+	int w = shapes[cfg.shape_begin].weight_;
+	for (int s = cfg.shape_begin + 1; s < cfg.shape_end; ++s)
+		if (shapes[s].weight_ != w) { w = 0; break; }
+	switch (w) {
+#define ENUM_SEEDS_CASE(N) case N: return enum_seeds_weight<N, F, Filter, SKIP_SEED_POSITIONS>(seqs, f, begin, end, filter, cfg);
+	ENUM_SEEDS_CASE(5) ENUM_SEEDS_CASE(6) ENUM_SEEDS_CASE(7) ENUM_SEEDS_CASE(8)
+	ENUM_SEEDS_CASE(9) ENUM_SEEDS_CASE(10) ENUM_SEEDS_CASE(11) ENUM_SEEDS_CASE(12)
+#undef ENUM_SEEDS_CASE
+	default:
+		return enum_seeds_weight<0, F, Filter, SKIP_SEED_POSITIONS>(seqs, f, begin, end, filter, cfg);
+	}
 }
 
 template<typename F, typename Filter, typename It, bool SKIP_SEED_POSITIONS>

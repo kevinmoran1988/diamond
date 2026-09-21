@@ -46,6 +46,13 @@ struct SeedIterator
 	{
 		return sh.set_seed_reduced(seed, ptr_++);
 	}
+	/* W known at compile time: the caller dispatched on the shape weight once, so the
+	   per-seed switch in Shape::set_seed_reduced is gone. */
+	template<int W>
+	bool get(uint64_t &seed, const Shape &sh)
+	{
+		return sh.template set_seed_reduced<W>(seed, ptr_++);
+	}
 	SeedIterator& operator++() {
 		ptr_++;
 		return *this;
